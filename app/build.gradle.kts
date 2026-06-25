@@ -27,5 +27,5 @@ android {
 }
 
 dependencies {
-    compileOnly("org.lsposed.lsposed:api:1.0.0")
+    compileOnly(files("libs/api-82.jar"))
 }
