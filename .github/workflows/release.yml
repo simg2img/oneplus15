@@ -1,15 +1,10 @@
-name: Build & Release
+name: Build
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g. v1.0)'
-        required: false
-        default: 'v1.0'
   push:
-    tags:
-      - 'v*'
+    branches:
+      - '*'
 
 jobs:
   build:
@@ -32,64 +27,25 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Generate keystore
+      - name: Build APK
+        run: gradle assembleRelease --stacktrace
+
+      - name: Sign APK
         run: |
           keytool -genkey -v -keystore release.jks -alias release \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass android123 -keypass android123 \
             -dname "CN=OnePlus15, OU=simg2img, O=simg2img, L=Unknown, ST=Unknown, C=ID"
-          keytool -list -v -keystore release.jks -storepass android123 -alias release \
-            | grep -i "SHA256:" | head -1 | awk '{print $NF}' > release.fingerprint
-
-      - name: Build release APK
-        run: gradle assembleRelease --stacktrace
-
-      - name: Install build-tools
-        run: |
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" 2>&1 || true
-
-      - name: Set up build-tools PATH
-        run: |
-          BT_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/*/ 2>/dev/null | head -1 | sed 's/\/$//')
-          echo "$BT_DIR" >> $GITHUB_PATH
-
-      - name: Align APK
-        run: |
-          zipalign -p -f -v 4 \
+          BT_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/*/ 2>/dev/null | head -1)
+          ${BT_DIR}zipalign -p -f -v 4 \
             app/build/outputs/apk/release/app-release-unsigned.apk \
-            app/build/outputs/apk/release/app-release-aligned.apk
-
-      - name: Sign APK
-        run: |
-          apksigner sign --ks release.jks --ks-pass pass:android123 \
+            app/build/outputs/apk/release/OnePlus15.apk
+          ${BT_DIR}apksigner sign --ks release.jks --ks-pass pass:android123 \
             --ks-key-alias release --key-pass pass:android123 \
-            app/build/outputs/apk/release/app-release-aligned.apk
+            app/build/outputs/apk/release/OnePlus15.apk
 
-      - name: Rename APK
-        run: |
-          mv app/build/outputs/apk/release/app-release-aligned.apk \
-             app/build/outputs/apk/release/OnePlus15.apk
-
-      - name: Prepare release notes
-        run: |
-          echo "## OnePlus 15 LSPosed Module" > release_body.md
-          echo "" >> release_body.md
-          echo "### SHA-256 Fingerprint:" >> release_body.md
-          echo '```' >> release_body.md
-          cat release.fingerprint >> release_body.md
-          echo '```' >> release_body.md
-
-      - name: Create Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.version }}"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-          gh release create "$TAG" \
-            --title "OnePlus 15 $TAG" \
-            --notes-file release_body.md \
-            "app/build/outputs/apk/release/OnePlus15.apk"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus15.apk
+          path: app/build/outputs/apk/release/OnePlus15.apk
