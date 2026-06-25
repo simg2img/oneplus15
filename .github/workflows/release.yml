@@ -80,10 +80,16 @@ jobs:
           echo '```' >> release_body.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: OnePlus 15 ${{ github.ref_name }}
-          body_path: release_body.md
-          fail_on_unmatched_files: true
-          files: |
-            app/build/outputs/apk/release/OnePlus15.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.version }}"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+          gh release create "$TAG" \
+            --title "OnePlus 15 $TAG" \
+            --notes-file release_body.md \
+            "app/build/outputs/apk/release/OnePlus15.apk"
